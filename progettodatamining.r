@@ -10,7 +10,8 @@ df <- read.csv("train.csv")
 df[c("key", "audio_mode", "ID")] <- lapply(df[c("key", "audio_mode", "ID")], as.factor)
 clases <- sapply(df, class)
 varNum <- names(clases)[clases %in% c("numeric","integer")]
-varCat <- names(clases)[which(clases %in% c("character", "factor"))]  # da trattare come categoriche
+varCat <- names(clases)[which(clases %in% c("character", "factor"))]  #da trattare come categoriche
+varCat= varCat[,-1]  # treiem la ID com avariable categòrica
 dim(df)           # dimensioni
 str(df)           # tipi variabili
 summary(df)       # riassunto statistico
@@ -348,4 +349,5 @@ cat("File salvati in ./processed/:\n - train_processed.csv\n - valid_processed.c
 cat("\nPOST-PROCESS CHECK (train):\n")
 print(dlookr::overview(train_proc))
 print(dlookr::diagnose(train_proc))
+
 
