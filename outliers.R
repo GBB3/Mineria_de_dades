@@ -5,6 +5,8 @@
 load("df_all_imputed.RData")
 
 #install.packages("mvoutlier")
+#install.packages("EnvStats")
+
 library(ggplot2)
 
 
@@ -14,8 +16,8 @@ library(ggplot2)
 
 ## MAX, MIN
 
-df_identifiers <- df_all_imputed[,c("global_ID","ID","dataset")]
-df_all <- subset(df_all_imputed, select = -c(global_ID, ID, dataset))
+df_identifiers <- df_all_imputed[,c("global_ID","ID","dataset","song_popularity")]
+df_all <- subset(df_all_imputed, select = -c(global_ID, ID, dataset,song_popularity))
 
 
 clases <- sapply(df_all, class)
@@ -50,6 +52,7 @@ outliers_list <- lapply(varNum, function(var) {
 })
 
 names(outliers_list) <- varNum
+str(outliers_list)
   
 ## BOXPLOT
 # Crear un boxplot
@@ -79,8 +82,7 @@ for (n in varNum) {
     labs(title = paste("Distribució Z-score de", n),
          x = "Z-score", y = "Freqüència") +
     theme_minimal()
-  
-  print(p)
+  p
 }
 
 ## HAMPEL IDENTIFIER
