@@ -9,6 +9,7 @@ load("df_all_imputed.RData")
 
 library(ggplot2)
 
+dir.create("plots OUTLIERS", showWarnings = FALSE)
 
 ##########################################################
 ######################## UNIVARIANT #####################
@@ -63,7 +64,10 @@ ggplot(df_all, aes(y = get(variable))) +
 
 boxplot.stats(df_all[, variable])$out
 
-## Z-SCORE
+## Z-SCORE (Només per variables normals)
+main_dir <- file.path("plots OUTLIERS", "Z-SCORE")
+dir.create(main_dir, showWarnings = FALSE)
+
 variable <- "Age"
 valorEscalado <- scale(df_all[, variable])
 hist(valorEscalado)
@@ -73,16 +77,19 @@ ggplot(data.frame(valor = valorEscalado), aes(x = valor)) +
   geom_vline(xintercept = c(3, -3), linetype = "dashed", color = "red", size = 1) + # Líneas horizontales
   theme_minimal()
 
-for (n in varNum) {
-  valorEscalado <- scale(df_all[[n]])
+for (var in varNum) {
+  subdir <- file.path(main_dir, n)
+  dir.create(subdir, showWarnings = FALSE)
   
-  p <- ggplot(data.frame(valor = valorEscalado), aes(x = valor)) +
+  valorEscalado <- scale(df_all[[var]])
+  
+  histo <- ggplot(data.frame(valor = valorEscalado), aes(x = valor)) +
     geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black") +
     geom_vline(xintercept = c(3, -3), linetype = "dashed", color = "red", size = 1) +
     labs(title = paste("Distribució Z-score de", n),
          x = "Z-score", y = "Freqüència") +
     theme_minimal()
-  p
+  ggsave(filename = file.path(subdir, paste0("histograma_", var, ".png")), plot = histo)
 }
 
 ## HAMPEL IDENTIFIER
@@ -101,8 +108,9 @@ hampel_outliers_df <- data.frame(
   stringsAsFactors = FALSE
 )
 
-for (n in varNum) {
-  x <- df_all[[n]]
+hampel_outliers_df()
+for (var in varNum) {
+  x <- df_all[[var]]
   
   lower_bound <- median(x, na.rm = TRUE) - 3 * mad(x, constant = 1, na.rm = TRUE)
   upper_bound <- median(x, na.rm = TRUE) + 3 * mad(x, constant = 1, na.rm = TRUE)
@@ -112,9 +120,9 @@ for (n in varNum) {
   if (length(outlier_ind) > 0) {
     
     temp <- data.frame(
-      variable = n,
+      variable = var,
       valor_outlier = x[outlier_ind],
-      ID = df_all$ID[outlier_ind] 
+      ID = df_all$ID[outlier_ind]  # canviar dataframe
     )
     hampel_outliers_df <- rbind(hampel_outliers_df, temp)
   }
@@ -272,6 +280,7 @@ ggplot(data = predicciones, aes(x = average_depth)) +
 
 cuantiles <- quantile(x = predicciones$average_depth, probs = seq(0, 1, 0.05))
 cuantiles
+
 
 
 
