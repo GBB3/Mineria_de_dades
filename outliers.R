@@ -78,7 +78,7 @@ ggplot(data.frame(valor = valorEscalado), aes(x = valor)) +
   theme_minimal()
 
 for (var in varNum) {
-  subdir <- file.path(main_dir, n)
+  subdir <- file.path(main_dir, var)
   dir.create(subdir, showWarnings = FALSE)
   
   valorEscalado <- scale(df_all[[var]])
@@ -86,7 +86,7 @@ for (var in varNum) {
   histo <- ggplot(data.frame(valor = valorEscalado), aes(x = valor)) +
     geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black") +
     geom_vline(xintercept = c(3, -3), linetype = "dashed", color = "red", size = 1) +
-    labs(title = paste("Distribució Z-score de", n),
+    labs(title = paste("Distribució Z-score de", var),
          x = "Z-score", y = "Freqüència") +
     theme_minimal()
   ggsave(filename = file.path(subdir, paste0("histograma_", var, ".png")), plot = histo)
@@ -94,21 +94,7 @@ for (var in varNum) {
 
 ## HAMPEL IDENTIFIER
 
-variable <- "Age"
-
-lower_bound <- median(df_all[, variable]) - 3 * mad(df_all[, variable], constant = 1)
-upper_bound <- median(df_all[, variable]) + 3 * mad(df_all[, variable], constant = 1)
-outlier_ind <- which((df_all[, variable] < lower_bound) | (df_all[, variable] > upper_bound))
-outlier_ind
-
-hampel_outliers_df <- data.frame(
-  variable = character(),
-  valor_outlier = numeric(),
-  ID = character(),
-  stringsAsFactors = FALSE
-)
-
-hampel_outliers_df()
+hampel_outliers_df <-data.frame()
 for (var in varNum) {
   x <- df_all[[var]]
   
@@ -122,7 +108,7 @@ for (var in varNum) {
     temp <- data.frame(
       variable = var,
       valor_outlier = x[outlier_ind],
-      ID = df_all$ID[outlier_ind]  # canviar dataframe
+      ID = df_identifiers$ID[outlier_ind]  # canviar dataframe
     )
     hampel_outliers_df <- rbind(hampel_outliers_df, temp)
   }
@@ -139,9 +125,12 @@ hampel_outliers_df
 ##########################################################
 ######################## MULTIVARIANT #####################
 #########################################################
+
+df_num <- df_all[,varNum]
+
 ## GENERAL CASE
 library(mvoutlier)
-df_all2 <- df_all; Y <- as.matrix(df_all2)
+df_all2 <- df_all[,varNum]; Y <- as.matrix(df_all2)
 distances <- dd.plot(Y,quan=1/2, alpha=0.025)
 
 head(distances$md.cla)
@@ -169,36 +158,51 @@ head(summary(mvnoutliers, select = "univariate"))
 ## PCA
 ## MAHALANOBIS DISTANCE
 
-distancia_mahalanobis <- mahalanobis(df_all, colMeans(df_all), cov(df_all))
+library(scatterplot3d)
+library(plotly)
+
+distancia_mahalanobis <- mahalanobis(df_num, colMeans(df_num), cov(df_num))
 plot(density(distancia_mahalanobis))
 
-cutoff <- qchisq(p = 0.99, df = ncol(df_all))
-df_all[distancia_mahalanobis>cutoff, ]
+# We set the cutoff at a 0.99 level
+cutoff <- qchisq(p = 0.99, df = ncol(df_num))
+df_num[distancia_mahalanobis>cutoff, ]
 
-df_all <- df_all[order(distancia_mahalanobis, decreasing = TRUE),]
+df_mahalanobis <- df_num[order(distancia_mahalanobis, decreasing = TRUE),]
 par(mfrow=c(1,1))
-hist(distancia_mahalanobis)
+hist(distancia_mahalanobis, breaks = 50, 
+     main = "Distribució de distàncies de Mahalanobis",
+     xlab = "Distància", col = "skyblue", border = "white") 
+max(distancia_mahalanobis) # we have some big values = extrem outliers 
 
-umbral <- 8
-df_all[, "outlier"] <- (distancia_mahalanobis > umbral)
+df_mahalanobis[, "outlier"] <- (distancia_mahalanobis > cutoff)
 
-df_all[, "color"] <- ifelse(df_all[, "outlier"], "red", "black")
-scatterplot3d(df_all[, "DC"], df_all[, "temp"], df_all[, "RH"], 
-              color = df_all[, "color"])
+# We choose three numerical variables to visualice the distribution of the outlier across the variables.
+df_mahalanobis[, "color"] <- ifelse(df_mahalanobis[, "outlier"], "red", "black")
+scatterplot3d(df_mahalanobis[, "danceability"], df_mahalanobis[, "energy"], df_mahalanobis[, "tempo"], 
+              color = df_mahalanobis[, "color"])
 
-(fig <- plotly::plot_ly(df_all, x = ~DC, y = ~temp, z = ~RH, 
+(fig <- plotly::plot_ly(df_mahalanobis, x = ~danceability, y = ~energy, z = ~tempo, 
                         color = ~color, colors = c('#0C4B8E', '#BF382A')) %>% 
     add_markers())
-(quienes <- which(df_all[, "outlier"] == TRUE))
+(quienes <- which(df_mahalanobis[, "outlier"] == TRUE))
 
 ### ROBUST MAHALANOBLIS 
+#install.packages("chemometrics")
 library(chemometrics)
+estandard<-scale(df_num,)
 
-dis <- chemometrics::Moutlier(df_all[, c("DC", "temp", "RH")], quantile = 0.99, plot = TRUE)
+dis <- chemometrics::Moutlier(estandard, quantile = 0.99, plot = TRUE)
+umbr_md <- quantile(dis$md, 0.99)
+umbr_rd <- quantile(dis$rd, 0.99)
 
 par(mfrow = c(1, 1))
 plot(dis$md, dis$rd, type = "n")
-text(dis$md, dis$rd, labels = rownames(df_all))
+text(dis$md, dis$rd, labels = rownames(df_num))
+
+plot(dis$md, dis$rd)
+abline(v=umbr_md, col="red",lty= 2)
+abline(h=umbr_rd,col="red",lty= 2)
 
 a <- which(dis$rd > 7)
 print(a)
@@ -208,37 +212,37 @@ print(a)
 ## KNN
 library(adamethods)
 
-do_knno(df_all[, c("DC", "temp", "RH")], k=1, top_n = 30)
+do_knno(df_num[, c("DC", "temp", "RH")], k=1, top_n = 30)
 
 ## LOF
 
 library(DMwR2)
 library(dplyr)
 
-outlier.scores <- lofactor(df_all[, c("DC", "temp", "RH")], k = 5)
+outlier.scores <- lofactor(df_num[, c("DC", "temp", "RH")], k = 5)
 par(mfrow=c(1,1))
 plot(density(outlier.scores))
 outlier.scores
 outliers <- order(outlier.scores, decreasing=T)
 outliers <- order(outlier.scores, decreasing=T)[1:5]
 
-n <- nrow(df_all[, c("DC", "temp", "RH")]); labels <- 1:n; labels[-outliers] <- "."
-biplot(prcomp(df_all[, c("DC", "temp", "RH")]), cex = .8, xlabs = labels)
+n <- nrow(df_num[, c("DC", "temp", "RH")]); labels <- 1:n; labels[-outliers] <- "."
+biplot(prcomp(df_num[, c("DC", "temp", "RH")]), cex = .8, xlabs = labels)
 
 pch <- rep(".", n)
 pch[outliers] <- "+"
 col <- rep("black", n)
 col[outliers] <- "red"
-pairs(df_all[, c("DC", "temp", "RH")], pch = pch, col = col)
+pairs(df_num[, c("DC", "temp", "RH")], pch = pch, col = col)
 
-plot3d(df_all[, "DC"], df_all[, "temp"], df_all[, "RH"], type = "s", col = col, size = 1)
+plot3d(df_num[, "DC"], df_num[, "temp"], df_num[, "RH"], type = "s", col = col, size = 1)
 
 ### NEW LOF
 library(Rlof)
-outliers.scores <- Rlof::lof(df_all[, c("DC", "temp", "RH")], k = 5)
+outliers.scores <- Rlof::lof(df_num[, c("DC", "temp", "RH")], k = 5)
 plot(density(outliers.scores))
 
-#outlier.scores <- lof(df_all[, c("DC", "temp", "RH")], k=c(5:10))
+#outlier.scores <- lof(df_num[, c("DC", "temp", "RH")], k=c(5:10))
 
 ## ISOLATION FOREST
 ### Cargamos las librerias necesarias
