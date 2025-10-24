@@ -1,15 +1,86 @@
-
 ##############
 # OUTLIERS ##
 #############
+
+## PAQUETS:
 load("df_all_imputed.RData")
 
 #install.packages("mvoutlier")
 #install.packages("EnvStats")
 
-library(ggplot2)
-
 dir.create("plots OUTLIERS", showWarnings = FALSE)
+
+## DATASETS:
+df_identifiers <- df_all_imputed[,c("global_ID","ID","dataset","song_popularity")]
+df_all <- subset(df_all_imputed, select = -c(global_ID, ID, dataset,song_popularity))
+
+clases <- sapply(df_all, class)
+varNum <- names(clases)[which(clases %in% c("numeric", "integer"))]
+varCat <- names(clases)[which(clases %in% c("character", "factor"))]
+
+df_num <- df_all[,varNum]
+
+########################
+## TEST DE NORMALITAT ##
+#######################
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Crear un dataframe per guardar resultats KS
+results_KS <- data.frame(
+  Variable = character(),
+  D_statistic = numeric(),
+  p_value = numeric(),
+  Normal = logical(),
+  stringsAsFactors = FALSE
+)
+
+# Carpeta per guardar els QQ-plots
+dir.create("QQ_plots", showWarnings = FALSE)
+
+for (var in names(df_num)) {
+  x <- df_num[[var]]
+  
+  # KS-test comparant amb distribució normal amb mateixa mitjana i sd
+  if (length(x) >= 3) {
+    test <- ks.test(x, "pnorm", mean = mean(x), sd = sd(x))
+    
+    results_KS <- rbind(
+      results_KS,
+      data.frame(
+        Variable = var,
+        D_statistic = test$statistic,
+        p_value = test$p.value,
+        Normal = test$p.value > 0.05
+      )
+    )
+    
+    # Generar QQ-plot amb ggplot2
+    qq_plot <- ggplot(data.frame(x = x), aes(sample = x)) +
+      stat_qq() +
+      stat_qq_line(col = "red") +
+      labs(title = paste("QQ-plot de", var)) +
+      theme_minimal()
+    
+    # Guardar plot
+    ggsave(filename = paste0("QQ_plots/QQ_", var, ".png"), plot = qq_plot, width = 5, height = 4)
+  }
+}
+
+# Ordenar resultats per p-value
+results_KS <- results_KS[order(results_KS$p_value),]
+print(results_KS)
+
+
+# Mostrem els resultats
+print(results_normalitat)
+
+# Opcional: ordenar per p-value (de menys normal a més normal)
+results_normalitat <- results_normalitat[order(results_normalitat$p_value),]
+print(results_normalitat)
+
+# No hi ha cap normal
 
 ##########################################################
 ######################## UNIVARIANT #####################
@@ -17,18 +88,14 @@ dir.create("plots OUTLIERS", showWarnings = FALSE)
 
 ## MAX, MIN
 
-df_identifiers <- df_all_imputed[,c("global_ID","ID","dataset","song_popularity")]
-df_all <- subset(df_all_imputed, select = -c(global_ID, ID, dataset,song_popularity))
-
-
-clases <- sapply(df_all, class)
-varNum <- names(clases)[which(clases %in% c("numeric", "integer"))]
-varCat <- names(clases)[which(clases %in% c("character", "factor"))]
-
 mapply(function(x, name) {
   cat("var. ", name, ": \n\t min: ", min(x), "\n\t max: ", max(x), "\n")
   invisible(NULL)  # Evita la salida de valores NULL
 }, df_all[, varNum], colnames(df_all[, varNum]))
+
+# loudness: usual max value is 0. Max is 1.58 aceptable but rare. 
+# song_duration: max 1799346 = 30 min. It is too much.
+# tempo: it is not possible for a song to have 0 BPM.
 
 ## IQR
 
@@ -68,15 +135,6 @@ boxplot.stats(df_all[, variable])$out
 main_dir <- file.path("plots OUTLIERS", "Z-SCORE")
 dir.create(main_dir, showWarnings = FALSE)
 
-variable <- "Age"
-valorEscalado <- scale(df_all[, variable])
-hist(valorEscalado)
-
-ggplot(data.frame(valor = valorEscalado), aes(x = valor)) +
-  geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black") +  # Histograma
-  geom_vline(xintercept = c(3, -3), linetype = "dashed", color = "red", size = 1) + # Líneas horizontales
-  theme_minimal()
-
 for (var in varNum) {
   subdir <- file.path(main_dir, var)
   dir.create(subdir, showWarnings = FALSE)
@@ -114,7 +172,7 @@ for (var in varNum) {
   }
 }
 
-hampel_outliers_df
+head(hampel_outliers_df)
 
 ## STADISTICAL TESTS
 ### GRUBS
@@ -125,8 +183,6 @@ hampel_outliers_df
 ##########################################################
 ######################## MULTIVARIANT #####################
 #########################################################
-
-df_num <- df_all[,varNum]
 
 ## GENERAL CASE
 library(mvoutlier)
@@ -204,8 +260,10 @@ plot(dis$md, dis$rd)
 abline(v=umbr_md, col="red",lty= 2)
 abline(h=umbr_rd,col="red",lty= 2)
 
-a <- which(dis$rd > 7)
-print(a)
+
+a <- which(dis$md > umbr_md | dis$rd > umbr_rd)
+num.elim.r<-sum(dis$md > umbr_md | dis$rd > umbr_rd) 
+num.elim.r
 
 ## REGRESION
 ## COOK'S DISTANCE
@@ -216,15 +274,23 @@ do_knno(df_num[, c("DC", "temp", "RH")], k=1, top_n = 30)
 
 ## LOF
 
+#install.packages("DMwR2")
 library(DMwR2)
 library(dplyr)
 
-outlier.scores <- lofactor(df_num[, c("DC", "temp", "RH")], k = 5)
+outlier.scores <- lofactor(df_num, k = 5)
 par(mfrow=c(1,1))
 plot(density(outlier.scores))
 outlier.scores
+
+# Ver outliers
+outliers.lof <- which(outlier.scores > quantile(outlier.scores, 0.99))
+
+
+length(outliers.lof)
 outliers <- order(outlier.scores, decreasing=T)
 outliers <- order(outlier.scores, decreasing=T)[1:5]
+
 
 n <- nrow(df_num[, c("DC", "temp", "RH")]); labels <- 1:n; labels[-outliers] <- "."
 biplot(prcomp(df_num[, c("DC", "temp", "RH")]), cex = .8, xlabs = labels)
@@ -238,9 +304,16 @@ pairs(df_num[, c("DC", "temp", "RH")], pch = pch, col = col)
 plot3d(df_num[, "DC"], df_num[, "temp"], df_num[, "RH"], type = "s", col = col, size = 1)
 
 ### NEW LOF
+#install.packages("Rlof")
 library(Rlof)
-outliers.scores <- Rlof::lof(df_num[, c("DC", "temp", "RH")], k = 5)
-plot(density(outliers.scores))
+outliers.scores <- Rlof::lof(df_num, k = 5) ## !!!! probar més k, recomat provar valors més grans quan tenim tantes obs
+plot(density(outliers.scores), 
+     main="Distribución de LOF Scores con Rlof",
+     col="blue", lwd=2, xlim=c(0, max(outliers.scores, na.rm = TRUE) * 1.1))
+abline(v=quantile(outliers.scores, 0.99), col="red", lty=2)
+
+outliers.lof <- which(outliers.scores > quantile(outliers.scores, 0.99))
+length(outliers.lof)
 
 #outlier.scores <- lof(df_num[, c("DC", "temp", "RH")], k=c(5:10))
 
@@ -285,6 +358,29 @@ ggplot(data = predicciones, aes(x = average_depth)) +
 cuantiles <- quantile(x = predicciones$average_depth, probs = seq(0, 1, 0.05))
 cuantiles
 
+# UNIVARIANT
+# Min i maxim: molt simple. Sensible escala.
+# IQR: no requereix normalitat però amb dades asimetriques pot fallar.
+# Z-Score: requereix aproximació a la normalitat i amb dades asimètriques pot fallar.
+# Hampel identifier: robust davant de distribucions asimètriques. Al ser univariant no captura relacions entre variables.
 
+# BIVARIANT
+# Mahalanobis: suposa aproximació normal multivariant. I sensible a outliers extrems.
+# Mahalanobis robust: millora mahalanobis i és menys sensible a outliers extrems.
+# LOF: no assumeix normalitat ni simètria. 
 
+#### Escollir el LOF (comparar LOF amb newLOF)
+#### Tractar com varible dummy ja que tenim variables amb una gran proporció d'outliers com speechiness i instrumentaless. 
 
+# Crear variable indicador de outlier
+df_num$is_outlier <- FALSE
+df_num$is_outlier[outliers.lof] <- TRUE
+df_num
+
+library(psych)
+
+describe(df_num[outliers.lof,])
+par(mfrow=c(6,4))
+
+describe(df_num[outliers.lof,])
+describe(df_num[-outliers.lof,])
