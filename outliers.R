@@ -18,6 +18,7 @@ clases <- sapply(df_all, class)
 varNum <- names(clases)[which(clases %in% c("numeric", "integer"))]
 varCat <- names(clases)[which(clases %in% c("character", "factor"))]
 
+df_cat <- df_all[, varCat]
 df_num <- df_all[,varNum]
 df_num_scaled <-scale(df_num,)
 
@@ -314,19 +315,25 @@ plot(density(outliers.scores),
 abline(v=quantile(outliers.scores, 0.99), col="red", lty=2)
 
 outliers.lof_new <- which(outliers.scores > quantile(outliers.scores, 0.99))
+
+outliers.lof_new_llindar <- which(outliers.scores > 2)
+
 length(outliers.lof_new)
+length(outliers.lof_new_llindar)
 
 k.values <- c(5, 10, 20, 50, 100)
 
 lof.results <- lapply(k.values, function(k) {
   scores <- Rlof::lof(df_num_scaled, k = k)
   data.frame(k = k,
-             cutoff = quantile(scores, 0.99, na.rm = TRUE),
-             n.outliers = sum(scores > quantile(scores, 0.99, na.rm = TRUE)))
-})
+             cutoff = 1.5,
+             n.outliers = sum(scores > 1.5))})
 
 do.call(rbind, lof.results)
 
+# Segons ppt llindar 1 es outlier, surten 16.000 amb diferents k 
+# Amb llindar 1.5 el nombre d'outliers és més coherent però varia segons la k que utilitzem
+# Si utilitzem el percentil tenim un nombre coherent i no depenem de la k. Ens sembla el millor metode.
 
 # Metodes equivalents, donen el mateix nombre d'outliers
 # També tenim el mateix nombre d'outliers escalant els dades
@@ -335,29 +342,28 @@ do.call(rbind, lof.results)
 
 ## ISOLATION FOREST
 ### Cargamos las librerias necesarias
-library(R.matlab)   # Lectura de archivos .mat
+
+#install.packages("ranger", type="binary")
+library(ranger)
+
+#install.packages("solitude")
 library(solitude)   # Modelo isolation forest
 library(tidyverse)  # Preparación de datos y gráficos
-library(MLmetrics)
-
-# Carreguem les dades
-cardio_mat  <- readMat("https://www.dropbox.com/s/galg3ihvxklf0qi/cardio.mat?dl=1")
-df_cardio   <- as.data.frame(cardio_mat$X)
-df_cardio$y <- as.character(cardio_mat$y)
-datos <- df_cardio
 
 isoforest <- isolationForest$new(
-  sample_size = as.integer(nrow(datos)/2),
+  sample_size = 256,
   num_trees   = 500, 
   replace     = TRUE,
   seed        = 123
 )
-isoforest$fit(dataset = datos %>% select(-y))
+isoforest$fit(dataset = df_num)
 
 predicciones <- isoforest$predict(
-  data = datos %>% select(-y)
-)
+  data = df_num)
+
 head(predicciones)
+
+predicciones$song_popularity <- df_identifiers$song_popularity
 
 ggplot(data = predicciones, aes(x = average_depth)) +
   geom_histogram(color = "gray40") +
@@ -374,6 +380,9 @@ ggplot(data = predicciones, aes(x = average_depth)) +
 cuantiles <- quantile(x = predicciones$average_depth, probs = seq(0, 1, 0.05))
 cuantiles
 
+predicciones$outlier <- predicciones$anomaly_score > 0.98
+table(predicciones$outlier)
+
 # UNIVARIANT
 # Min i maxim: molt simple. Sensible escala.
 # IQR: no requereix normalitat però amb dades asimetriques pot fallar.
@@ -386,17 +395,17 @@ cuantiles
 # LOF: no assumeix normalitat ni simètria. 
 
 #### Escollir el LOF (comparar LOF amb newLOF)
-#### Tractar com varible dummy ja que tenim variables amb una gran proporció d'outliers com speechiness i instrumentaless. 
+#### Possibilitats: asingar pesos a cada obs i asignar pes menors als outliers. NAs. Utilitzar models robustos. 
+#### De moment els tenim identificats per poder tractar-los si ho necessitem.
 
 # Crear variable indicador de outlier
-df_num$is_outlier <- FALSE
-df_num$is_outlier[outliers.lof] <- TRUE
+df_num$is_outlier <- 0
+df_num$is_outlier[outliers.lof_new] <- 1
 df_num
 
-library(psych)
+# Veiem les obs que son outliers
+df_num[df_num$is_outlier== 1,]
 
-describe(df_num[outliers.lof,])
-par(mfrow=c(6,4))
+df_outliers <- cbind(df_identifiers, df_cat,df_num)
 
-describe(df_num[outliers.lof,])
-describe(df_num[-outliers.lof,])
+save(df_outliers, file="df_outliers.RData")
