@@ -19,6 +19,7 @@ varNum <- names(clases)[which(clases %in% c("numeric", "integer"))]
 varCat <- names(clases)[which(clases %in% c("character", "factor"))]
 
 df_num <- df_all[,varNum]
+df_num_scaled <-scale(df_num,)
 
 ########################
 ## TEST DE NORMALITAT ##
@@ -246,9 +247,8 @@ scatterplot3d(df_mahalanobis[, "danceability"], df_mahalanobis[, "energy"], df_m
 ### ROBUST MAHALANOBLIS 
 #install.packages("chemometrics")
 library(chemometrics)
-estandard<-scale(df_num,)
 
-dis <- chemometrics::Moutlier(estandard, quantile = 0.99, plot = TRUE)
+dis <- chemometrics::Moutlier(df_num_scaled, quantile = 0.99, plot = TRUE)
 umbr_md <- quantile(dis$md, 0.99)
 umbr_rd <- quantile(dis$rd, 0.99)
 
@@ -273,12 +273,13 @@ library(adamethods)
 do_knno(df_num[, c("DC", "temp", "RH")], k=1, top_n = 30)
 
 ## LOF
+install.packages("remotes")
+remotes::install_github("cran/DMwR2")
 
-#install.packages("DMwR2")
 library(DMwR2)
 library(dplyr)
 
-outlier.scores <- lofactor(df_num, k = 5)
+outlier.scores <- lofactor(df_num_scaled, k = 5)
 par(mfrow=c(1,1))
 plot(density(outlier.scores))
 outlier.scores
@@ -306,14 +307,29 @@ plot3d(df_num[, "DC"], df_num[, "temp"], df_num[, "RH"], type = "s", col = col, 
 ### NEW LOF
 #install.packages("Rlof")
 library(Rlof)
-outliers.scores <- Rlof::lof(df_num, k = 5) ## !!!! probar més k, recomat provar valors més grans quan tenim tantes obs
+outliers.scores <- Rlof::lof(df_num_scaled, k = 5) ## !!!! probar més k, recomat provar valors més grans quan tenim tantes obs
 plot(density(outliers.scores), 
      main="Distribución de LOF Scores con Rlof",
      col="blue", lwd=2, xlim=c(0, max(outliers.scores, na.rm = TRUE) * 1.1))
 abline(v=quantile(outliers.scores, 0.99), col="red", lty=2)
 
-outliers.lof <- which(outliers.scores > quantile(outliers.scores, 0.99))
-length(outliers.lof)
+outliers.lof_new <- which(outliers.scores > quantile(outliers.scores, 0.99))
+length(outliers.lof_new)
+
+k.values <- c(5, 10, 20, 50, 100)
+
+lof.results <- lapply(k.values, function(k) {
+  scores <- Rlof::lof(df_num_scaled, k = k)
+  data.frame(k = k,
+             cutoff = quantile(scores, 0.99, na.rm = TRUE),
+             n.outliers = sum(scores > quantile(scores, 0.99, na.rm = TRUE)))
+})
+
+do.call(rbind, lof.results)
+
+
+# Metodes equivalents, donen el mateix nombre d'outliers
+# També tenim el mateix nombre d'outliers escalant els dades
 
 #outlier.scores <- lof(df_num[, c("DC", "temp", "RH")], k=c(5:10))
 
