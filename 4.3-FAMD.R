@@ -1,3 +1,4 @@
+#https://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/115-famd-factor-analysis-of-mixed-data-in-r-essentials/
 ## Import libraries
 library(FactoMineR)
 library(factoextra)
