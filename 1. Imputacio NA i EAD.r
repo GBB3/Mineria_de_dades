@@ -15,6 +15,27 @@ head(df_ts)
 df_tr$dataset <- "train"
 df_ts$dataset <- "test"
 
+#---- DUPLICATS -------------------
+# Duplicats segons el id
+# Duplicats d'ID
+dup_id <- df_tr[duplicated(df_tr$ID), ]
+dup_id #no tenim id duplicades
+
+# Duplicades files completes sense el id
+cols <- setdiff(names(df_tr), "ID")
+dups_all <- df_tr[ duplicated(df_tr[ , cols ]) | duplicated(df_tr[ , cols ], fromLast = TRUE), ]
+dups_all <- dups_all[ order(dups_all$liveness), ]
+dups_all #es mostren tots per veure que estan duplicats
+
+
+dup_no_id <- df_tr[duplicated(df_tr[ , setdiff(names(df_tr), "ID") ]), ]
+dup_no_id #conte nomes un registre del duplicat
+
+df_tr <- df_tr[ !df_tr$ID %in% dup_no_id$ID, ] #els eliminem del dataset
+
+dup_clean <- df_tr[duplicated(df_tr[ , setdiff(names(df_tr), "ID") ]), ]
+dup_clean #ens asegurem que ara ja no tenim duplicats
+
 # add col  target to test.csv so the number of cols are the same: we put the value at 0
 df_ts$song_popularity <- NA
 
@@ -22,10 +43,12 @@ df_ts$song_popularity <- NA
 df_ts <- df_ts[, names(df_tr)]
 
 ## Factors
-df_tr[c("ID", "time_signature", "key", "audio_mode","dataset")] <-
-  lapply(df_tr[c("ID", "time_signature", "key", "audio_mode","dataset")], as.factor)
-df_ts[c("ID", "time_signature", "key", "audio_mode","dataset")] <-
-  lapply(df_ts[c("ID", "time_signature", "key", "audio_mode","dataset")], as.factor)
+df_tr[c("ID", "time_signature", "key", "audio_mode")] <-lapply(df_tr[c("ID", "time_signature", "key", "audio_mode")], as.factor)
+df_ts[c("ID", "time_signature", "key", "audio_mode")] <-lapply(df_ts[c("ID", "time_signature", "key", "audio_mode")], as.factor)
+
+df_tr$dataset <- factor("train", levels = c("train", "test"))
+df_ts$dataset <- factor("test",  levels = c("train", "test"))
+
 
 # combined the datasets
 df_all <- rbind(df_tr, df_ts)
@@ -155,7 +178,8 @@ df_ts$time_signature <- NULL
 
 library(mice)
 library(dplyr)
-
+#install.packages("naniar")
+library(naniar)
 
 # Exclou les columnes que no vols imputar
 cols_excl <- c("global_ID", "ID","dataset","song_popularity")
@@ -176,6 +200,7 @@ mice::stripplot(imputed_Data, liveness, pch = 19, xlab = "Imputation number")
 df_all_imputed <- cbind(df_all[, cols_excl, drop = FALSE],
                        mice::complete(imputed_Data))
 
+save(df_all_imputed,file="df_all_imputed_no_duplicates.RData")
 
 # check if there are still NA
 colSums(is.na(df_all_imputed))
@@ -269,43 +294,6 @@ for (var in varCat) {
   # Desa el gràfic
   ggsave(filename = file.path(subdir, paste0("comparacio_", var, ".png")), plot = p)
 }
-
-
-########## TRANSFORMACIONS NECESSÀRIES
-# 🔹 Crear nou dataframe amb les transformacions recomanades
-
-
-##### TRANFORMACIONS
-### Liveness: Molta asimetria, log(1+x)
-### Loudness: No cal transformar
-### Danceability: No cal transformar
-### song_duration_ms: Molta asimetria, log(x)
-### audio_valence: No cal transformar
-### energy: no cal transformar
-### tempo: normalització per evitar que domini la regressió per escala
-### accousticness: volem suavitzar l'assimetria, sqrt(x)
-### speechiness: volem suavitzar l'assimetria, sqrt(x)
-### instrumentalness: extremadament asimetrica (log(1+x))
-
-df_all_transformed <- df_all_imputed |> 
-  dplyr::mutate(
-    # Transformacions logarítmiques o arrel
-    liveness = log1p(liveness),
-    song_duration_ms = log(song_duration_ms),
-    acousticness = sqrt(acousticness),
-    speechiness = sqrt(speechiness),
-    instrumentalness = log1p(instrumentalness),
-    
-    # Escalat de tempo
-    tempo = scale(tempo),
-    
-    # Variables categòriques
-    key = as.factor(key),
-    audio_mode = as.factor(audio_mode)
-  )
-
-
-save(df_all_transformed, file = "df_all_transformed.RData")
 
 
 ##### Descriptiva univariant post imputacio
@@ -558,214 +546,5 @@ for (cat_var1 in names(cat_dades)) {
 }
 
 
-##### DESCRIPCIO AMB VARIABLES TRANSFORMADES
-##### Descriptiva univariant post transformació
-# --- SELECCIÓ DE VARIABLES ---
-varNum <- names(df_all_transformed)[sapply(df_all_transformed, is.numeric)]
-varCat <- names(df_all_transformed)[sapply(df_all_transformed, is.factor) | sapply(df_all_transformed, is.character)]
-
-# Exclou identificadors
-vars_excl <- c("global_ID", "ID", "dataset")
-varNum <- setdiff(varNum, vars_excl)
-varCat <- setdiff(varCat, vars_excl)
-
-# =========================================================
-# 🔹 NUMÈRIQUES
-# =========================================================
-library(ggplot2)
-
-# --- SELECCIÓ DE VARIABLES NUMÈRIQUES ---
-varNum <- names(df_all_transformed)[sapply(df_all_transformed, is.numeric)]
-vars_excl <- c("global_ID", "ID", "dataset")
-varNum <- setdiff(varNum, vars_excl)
-
-# --- CREACIÓ DE LA CARPETA PRINCIPAL ---
-dir.create("plots_num_df_all_transformed", showWarnings = FALSE)
-
-# --- BUCLE PER CREAR ELS GRÀFICS ---
-for (var in varNum) {
-  
-  # Subcarpeta per cada variable
-  subdir <- file.path("plots_num_df_all_transformed", var)
-  dir.create(subdir, showWarnings = FALSE)
-  
-  # --- HISTOGRAMA AMB DENSITAT ---
-  histo <- ggplot(df_all_transformed, aes(x = .data[[var]])) + 
-    geom_histogram(aes(y = ..density..), colour = "black", fill = "white", bins = 30) +
-    geom_density(alpha = 0.2, fill = "#FF6666") +
-    geom_vline(aes(xintercept = mean(.data[[var]], na.rm = TRUE)),
-               color = "blue", linetype = "dashed", linewidth = 1) +
-    ggtitle(paste("Histograma i densitat de", var)) +
-    theme_minimal() +
-    theme(text = element_text(size = 13))
-  
-  # --- BOXPLOT ---
-  boxp <- ggplot(df_all_transformed, aes(x = .data[[var]])) + 
-    geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
-    ggtitle(paste("Boxplot de", var)) +
-    theme_minimal() +
-    theme(text = element_text(size = 13))
-  
-  # --- DESA ELS GRÀFICS ---
-  ggsave(filename = file.path(subdir, paste0("histograma_", var, ".png")), plot = histo)
-  ggsave(filename = file.path(subdir, paste0("boxplot_", var, ".png")), plot = boxp)
-}
-
-
-# =========================================================
-# 🔹 CATEGÒRIQUES
-# =========================================================
-dir.create("comparacions_cat_df_all_transformed", showWarnings = FALSE)
-
-for (var in varCat) {
-  subdir <- file.path("comparacions_cat_df_all_transformed", var)
-  dir.create(subdir, showWarnings = FALSE)
-  
-  tab <- prop.table(table(df_all_transformed[[var]], useNA = "ifany"))
-  df_tab <- data.frame(Categoria = names(tab), Proporcio = as.numeric(tab))
-  
-  p <- ggplot(df_tab, aes(x = Categoria, y = Proporcio)) +
-    geom_bar(stat = "identity", fill = "#7570b3") +
-    theme_minimal() +
-    labs(title = paste("Distribució de", var, "(df_all_transformed)"),
-         x = var, y = "Proporció") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
-          text = element_text(size = 13))
-  
-  ggsave(filename = file.path(subdir, paste0("distribucio_", var, ".png")), plot = p)
-}
-
-
-### Descriptiva bivariant post transformació
-dadesimp <- df_all_transformed
-
-## Numeriques vs numeriques
-library(ggplot2)
-
-dir.create("num_num_transformed", showWarnings = FALSE)
-
-num_dades <- dadesimp[sapply(dadesimp, is.numeric)]
-comb <- combn(names(num_dades), 2, simplify = FALSE)
-
-for (par in comb) {
-  var1 <- par[1]
-  var2 <- par[2]
-  
-  corr_value <- cor(num_dades[[var1]], num_dades[[var2]], use = "complete.obs")
-  
-  p <- ggplot(dadesimp, aes_string(x = var1, y = var2)) +
-    geom_point(alpha = 0.6, color = "blue") +
-    geom_smooth(method = "lm", se = FALSE, color = "red") +
-    labs(title = paste("Scatterplot de", var1, "vs", var2),
-         subtitle = paste("Correlació:", round(corr_value, 2)),
-         x = var1, y = var2) +
-    theme_minimal(base_size = 14)
-  
-  ggsave(filename = paste0("num_num_transformed/", var1, "_vs_", var2, ".png"),
-         plot = p, width = 7, height = 5, dpi = 300)
-  
-  writeLines(
-    paste("Coeficient de correlació entre", var1, "i", var2, ":", round(corr_value, 4)),
-    paste0("num_num_transformed/", var1, "_vs_", var2, ".txt")
-  )
-}
-
-
-### Numeriques vs categoriques
-library(dplyr)
-
-dir.create("num_cat_transformed", showWarnings = FALSE)
-
-num_dades <- dadesimp[sapply(dadesimp, is.numeric)]
-cat_dades <- dadesimp[sapply(dadesimp, is.factor)]
-cat_dades$ID <- NULL
-
-for (num_var in names(num_dades)) {
-  for (cat_var in names(cat_dades)) {
-    
-    resum <- dadesimp %>%
-      group_by(.data[[cat_var]]) %>%
-      summarise(
-        Mínim = min(.data[[num_var]], na.rm = TRUE),
-        Q1 = quantile(.data[[num_var]], 0.25, na.rm = TRUE),
-        Mediana = median(.data[[num_var]], na.rm = TRUE),
-        Mitjana = mean(.data[[num_var]], na.rm = TRUE),
-        Q3 = quantile(.data[[num_var]], 0.75, na.rm = TRUE),
-        Màxim = max(.data[[num_var]], na.rm = TRUE),
-        Desviació = sd(.data[[num_var]], na.rm = TRUE),
-        N = sum(!is.na(.data[[num_var]]))
-      )
-    
-    write.table(
-      resum, file = paste0("num_cat_transformed/", num_var, "_vs_", cat_var, ".txt"),
-      sep = "\t", row.names = FALSE, quote = FALSE
-    )
-    
-    p1 <- ggplot(dadesimp, aes_string(x = cat_var, y = num_var)) +
-      geom_boxplot(fill = "lightblue", color = "darkblue", alpha = 0.7) +
-      labs(title = paste("Boxplot de", num_var, "per", cat_var)) +
-      theme_minimal(base_size = 14)
-    
-    ggsave(filename = paste0("num_cat_transformed/", num_var, "_vs_", cat_var, "_boxplot.png"),
-           plot = p1, width = 7, height = 5, dpi = 300)
-    
-    p2 <- ggplot(dadesimp, aes_string(x = num_var, y = "..density..", fill = cat_var)) +
-      geom_histogram(position = "identity", alpha = 0.6, bins = 30) +
-      labs(title = paste("Histograma de", num_var, "segons", cat_var),
-           y = "Densitat (freqüència relativa)") +
-      theme_minimal(base_size = 14) +
-      theme(legend.position = "bottom")
-    
-    ggsave(filename = paste0("num_cat_transformed/", num_var, "_vs_", cat_var, "_histograma.png"),
-           plot = p2, width = 7, height = 5, dpi = 300)
-  }
-}
-
-
-### Categòrica vs categòrica
-dir.create("cat_cat_transformed", showWarnings = FALSE)
-
-cat_dades <- dadesimp[sapply(dadesimp, is.factor)]
-cat_dades$ID <- NULL
-
-for (cat_var1 in names(cat_dades)) {
-  for (cat_var2 in names(cat_dades)) {
-    
-    if (cat_var1 == cat_var2) next
-    
-    taula_contingencia <- table(dadesimp[[cat_var1]], dadesimp[[cat_var2]])
-    taula_contingencia_relativa <- prop.table(taula_contingencia)
-    percentatge_fila <- prop.table(taula_contingencia, margin = 1) * 100
-    percentatge_columna <- prop.table(taula_contingencia, margin = 2) * 100
-    
-    write.table(
-      cbind(taula_contingencia, "Pesos Relatius" = round(taula_contingencia_relativa, 4),
-            "Percentatge Fila" = round(percentatge_fila, 2),
-            "Percentatge Columna" = round(percentatge_columna, 2)),
-      file = paste0("cat_cat_transformed/", cat_var1, "_vs_", cat_var2, "_taula_contingencia.txt"),
-      sep = "\t", row.names = TRUE, col.names = TRUE, quote = FALSE
-    )
-    
-    test_chi <- chisq.test(taula_contingencia)
-    
-    writeLines(
-      paste("Test d'Independència Chi Quadrada per", cat_var1, "i", cat_var2, ":\n",
-            "Estadístic X² =", round(test_chi$statistic, 2), "\n",
-            "P-value =", round(test_chi$p.value, 4), "\n",
-            "Graus de llibertat =", test_chi$parameter),
-      paste0("cat_cat_transformed/", cat_var1, "_vs_", cat_var2, "_test_chi.txt")
-    )
-    
-    p <- ggplot(dadesimp, aes_string(x = cat_var1, fill = cat_var2)) +
-      geom_bar(position = "fill", alpha = 0.7) +
-      labs(title = paste("Gràfic de barres de", cat_var1, "vs", cat_var2),
-           y = "Proporció", x = cat_var1) +
-      theme_minimal(base_size = 14) +
-      theme(legend.position = "bottom")
-    
-    ggsave(filename = paste0("cat_cat_transformed/", cat_var1, "_vs_", cat_var2, "_barres.png"),
-           plot = p, width = 7, height = 5, dpi = 300)
-  }
-}
 
 
