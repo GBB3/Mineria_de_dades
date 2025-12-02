@@ -73,6 +73,24 @@ clases <- sapply(datos, class)
 varNum <- names(clases)[which(clases %in% c("numeric", "integer"))]
 varCat <- names(clases)[which(clases %in% c("character", "factor"))]
 
+mapply(function(x, name) {
+  cat("var. ", name, ":\n",
+      "\t min: ", suppressWarnings(min(x, na.rm = TRUE)), "\n",
+      "\t max: ", suppressWarnings(max(x, na.rm = TRUE)), "\n",
+      sep = "")
+  invisible(NULL)
+}, df_all[, varNum], colnames(df_all[, varNum]))
+
+# Tempo = 0 no és possible, substituim per NA per posterior imputació
+df_all$tempo[df_all$tempo == 0] <- NA
+
+# song_duration_ms problemàtic
+#Min: 26.186 ms → 0.026 segons → IMPOSSIBLE
+#Max: 1.799.346 ms → 30 minuts → POSSIBLE (podria ser un podcast).
+# Valors coherents: entre 30.000 i 600.000 ms
+df_all[(!is.na(df_all$song_duration_ms)) &(df_all$song_duration_ms < 30000 | df_all$song_duration_ms > 600000),]
+
+
 
 ### NUMERICAL VARIABLES
 library(psych)
