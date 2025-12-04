@@ -16,6 +16,9 @@ varCat <- names(clases)[which(clases %in% c("character", "factor"))]
 df_cat <- df_all[, varCat]
 df_num <- df_all[,varNum]
 
+################################################################################
+########## NO OUTLIERS EXTREMS/DUMMIES/KEY_TRIGO ###################
+################################################################################
 ## IQR Extrem
 
 library(EnvStats)
@@ -100,12 +103,39 @@ table(df_all_imputed$IQR_extrem)
 table(df_all_imputed$IQR_mid)
 table(df_all_imputed$IQRmid_no_extrem)
 
+# Treiem outliers univariants
 df_no_outliers_extrems <- df_all_imputed[df_all_imputed$IQR_extrem == 0 & df_all_imputed$dataset == "train" ,]
-df_no_outliers_extrems <- rbind(df_all_imputed_test,df_no_outliers_extrems)
 df_no_outliers_extrems <- subset(df_no_outliers_extrems,select=-c(IQR_extrem,IQR_mid,IQRmid_no_extrem))
+df_no_outliers_extrems <- rbind(df_all_imputed_test,df_no_outliers_extrems)
 
+
+# Treiem outliers multivariant
+
+# Transformem categoriques en dummies
+table(df_no_outliers_extrems$key)
+table(df_no_outliers_extrems$audio_mode)
+
+#install.packages("fastDummies")
+library(fastDummies)
+df_no_outliers_extrems_dummies <- fastDummies::dummy_cols(df_no_outliers_extrems,
+                                  select_columns = c("key"),
+                                  remove_first_dummy = TRUE)
+df_no_outliers_extrems_dummies$key <- NULL
+
+#Transformem key trigonometricament
+df_no_outliers_extrems_keytrigo <- df_no_outliers_extrems
+df_no_outliers_extrems_keytrigo$key_sin <- sin(2*pi*as.numeric(df_no_outliers_extrems_keytrigo$key)/12)
+df_no_outliers_extrems_keytrigo$key_cos <- cos(2*pi*as.numeric(df_no_outliers_extrems_keytrigo$key)/12)
+df_no_outliers_extrems_keytrigo$key <- NULL
+
+# Guardem 
 save(df_no_outliers_extrems, file="df_no_outliers_extrems.RData")
+save(df_no_outliers_extrems_dummies, file="df_no_outliers_extrems_dummies.RData")
+save(df_no_outliers_extrems_keytrigo, file="df_no_outliers_extrems_keytrigo.RData")
 
+################################################################################
+########## NO OUTLIERS EXTREMS UNIVARIANTS/DUMMIES/KEY_TRIGO ###################
+################################################################################
 ## IQR Extrem
 library(EnvStats)
 
@@ -144,8 +174,26 @@ df_all_imputed$IQR_extrem_no_intrumentalness <- ifelse(
 )
 
 df_no_outliers_extrems_no_instrumetalness <- df_all_imputed[df_all_imputed$IQR_extrem_no_intrumentalness == 0 & df_all_imputed$dataset == "train" ,]
-df_no_outliers_extrems_no_instrumetalness <- subset(df_no_outliers_extrems_no_instrumetalness,select=-c(IQR_extrem_no_intrumentalness))
+df_no_outliers_extrems_no_instrumetalness <- subset(df_no_outliers_extrems_no_instrumetalness,select=-c(IQR_extrem,IQR_mid,IQRmid_no_extrem,IQR_extrem_no_intrumentalness))
 df_no_outliers_extrems_no_instrumetalness <- rbind(df_all_imputed_test,df_no_outliers_extrems_no_instrumetalness)
-df_no_outliers_extrems_no_instrumetalness <- subset(df_no_outliers_extrems_no_instrumetalness,select=-c(IQR_extrem,IQR_mid,IQRmid_no_extrem))
 
+# Treiem outliers multivariant
+
+#install.packages("fastDummies")
+library(fastDummies)
+df_no_outliers_extrems_no_instrumentalness_dummies <- fastDummies::dummy_cols(df_no_outliers_extrems,
+                                                          select_columns = c("key"),
+                                                          remove_first_dummy = TRUE)
+df_no_outliers_extrems_no_instrumentalness_dummies$key <- NULL
+
+
+#Transformem key trigonometricament
+df_no_outliers_extrems__no_instrumentalness_keytrigo <- df_no_outliers_extrems_no_instrumetalness
+df_no_outliers_extrems__no_instrumentalness_keytrigo$key_sin <- sin(2*pi*as.numeric(df_no_outliers_extrems__no_instrumentalness_keytrigo$key)/12)
+df_no_outliers_extrems__no_instrumentalness_keytrigo$key_cos <- cos(2*pi*as.numeric(df_no_outliers_extrems__no_instrumentalness_keytrigo$key)/12)
+df_no_outliers_extrems__no_instrumentalness_keytrigo$key <- NULL
+
+# Guardem 
 save(df_no_outliers_extrems_no_instrumetalness, file="df_no_outliers_extrems_no_instrumetalness.RData")
+save(df_no_outliers_extrems_no_instrumentalness_dummies, file="df_no_outliers_extrems_no_instrumentalness_dummies.RData")
+save(df_no_outliers_extrems_no_instrumentalness_dummies, file="df_no_outliers_extrems_no_instrumentalness_dummies.RData")
