@@ -1,5 +1,4 @@
 dd=df_all_transformed
-
 dd=dd[,-1]
 
 dd_train <- dd[dd$dataset == "train", ]
@@ -26,7 +25,7 @@ svm_cv <- tune(
   tunecontrol = tune.control(sampling = "cross", cross = 5)
 )
 
-  summary(svm_cv)
+summary(svm_cv)
 
 # Millor model
 best_svm <- svm_cv$best.model
@@ -77,21 +76,35 @@ best_svm <- svm_cv$best.model
 # Prediccions sobre test_data
 pred_test <- predict(best_svm, newdata = test_data)
 
-rmse <- function(actual, predicted) {
-  sqrt(mean((actual - predicted)^2))
+vec <- as.vector(pred_test)
+test_data$song_popularity-vec
+
+rmse <- (test_data$song_popularity - vec)^2
+
+n <- length(vec)
+mape_obs <- numeric(n)
+
+
+for (i in 1:n) {
+  if (test_data$song_popularity[i] == 0) {
+    true_val <- test_data$song_popularity[i] + 1
+    pred_val <- vec[i] + 1
+  } else {
+    true_val <- test_data$song_popularity[i]
+    pred_val <- vec[i]
+  }
+  
+  mape_obs[i] <- abs((true_val - pred_val) / true_val)
 }
 
-mape <- function(y_true, y_pred) {
-  
-  y_true_adj <- ifelse(y_true == 0, y_true + 1, y_true)
-  y_pred_adj <- ifelse(y_true == 0, y_pred + 1, y_pred)
-  
-  mape<- mean(abs((y_true_adj - y_pred_adj) / y_true_adj))
-  return(mape)
-}
+mape=mape_obs
 
-rmse_test <- rmse(test_data$song_popularity, pred_test)
-mape_test <- mape(test_data$song_popularity, pred_test)
+RSME=sqrt(mean(rmse))
+MAPE=mean(mape)
+SD_RSME=sd(sqrt(rmse))
+SD_MAPE=sd(mape)
 
-cat("RMSE sobre test:", rmse_test, "\n")
-cat("MAPE sobre test:", mape_test, "\n")
+RSME
+MAPE
+SD_RSME
+SD_MAPE
