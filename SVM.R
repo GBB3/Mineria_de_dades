@@ -12,7 +12,7 @@ library(mlbench)
 library(ggplot2)
 library(ISLR)
 
-set.seed(1234)
+set.seed(9909)
 
 svm_cv <- tune(
   "svm",
@@ -22,10 +22,11 @@ svm_cv <- tune(
   ranges = list(
     cost = c(10),
     gamma = c(0.8)
-  )
+  ),
+  tunecontrol = tune.control(sampling = "cross", cross = 5)
 )
 
-summary(svm_cv)
+  summary(svm_cv)
 
 # Millor model
 best_svm <- svm_cv$best.model
@@ -40,22 +41,57 @@ preds <- predict(best_svm, dd_test2)
 
 dd_test$pred_song_popularity <- preds
 
-r=data.frame(id=1:5649,song_popularity=round(preds_original,0))
+r=data.frame(id=1:5649,song_popularity=round(preds,0))
 
 r$song_popularity
 c=data.frame(id=1:5649,song_popularity=r$song_popularity)
 
-write.csv(c,"ere1.csv")
+write.csv(c,"SVM_final.csv")
+
+# --------- 
+
+set.seed(123)
+
+train_index <- createDataPartition(dd_train$song_popularity, p = 0.7, list = FALSE)
+train_data <- dd_train[train_index, ]
+test_data <- dd_train[-train_index, ]
 
 
-ggplot(
-  data = svm_cv$performances,
-  aes(x = cost, y = error, color = as.factor(gamma))
-) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "Error vs paràmetres C i gamma",
-    color = "gamma"
-  ) +
-  theme_bw()
+svm_cv <- tune(
+  "svm",
+  song_popularity ~ ., 
+  data = train_data,
+  kernel = "radial",
+  ranges = list(
+    cost = c(10),
+    gamma = c(0.8)
+  ),
+  tunecontrol = tune.control(sampling = "cross", cross = 5)
+)
+
+summary(svm_cv)
+
+# Millor model segons la cross-validation
+best_svm <- svm_cv$best.model
+
+# Prediccions sobre test_data
+pred_test <- predict(best_svm, newdata = test_data)
+
+rmse <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
+
+mape <- function(y_true, y_pred) {
+  
+  y_true_adj <- ifelse(y_true == 0, y_true + 1, y_true)
+  y_pred_adj <- ifelse(y_true == 0, y_pred + 1, y_pred)
+  
+  mape<- mean(abs((y_true_adj - y_pred_adj) / y_true_adj))
+  return(mape)
+}
+
+rmse_test <- rmse(test_data$song_popularity, pred_test)
+mape_test <- mape(test_data$song_popularity, pred_test)
+
+cat("RMSE sobre test:", rmse_test, "\n")
+cat("MAPE sobre test:", mape_test, "\n")
