@@ -5,6 +5,19 @@ library(caret)
 str(df_outliers)
 ##Partición de Data usando library(caret)
 
+# KPI
+KPI <- function(data, lev = NULL, model = NULL) {
+  eps <- 1e-6  
+  mape <- mean(abs((data$obs - data$pred) / (data$obs + eps))) * 100
+  
+  c(
+    RMSE = RMSE(data$pred, data$obs),
+    Rsquared = R2(data$pred, data$obs),
+    MAPE = mape
+  )
+}
+
+#------
 set.seed(1)
 trainingg <- subset(df_outliers, dataset == "train")
 inTraining <- createDataPartition(trainingg$song_popularity, p = .80, list = FALSE)
@@ -13,6 +26,7 @@ testing  <- trainingg[-inTraining,]
 training <- training[, -c(1:3, ncol(training))]
 testing <- testing[, -c(1:3, ncol(testing))]
 set.seed(1)
+
 model3 <- train(
   song_popularity ~ .,
   data = training,
@@ -30,10 +44,14 @@ predictions = predict(model3, newdata = test.features)
 sqrt(mean((test.target - predictions)^2))
 # R2
 cor(test.target, predictions) ^ 2
+# MAPE
+eps <- 1e-6 
+mean(abs((test.target - predictions) / (test.target + eps))) * 100
 ### Si agregamos cross-validation
 ctrl <- trainControl(
   method = "cv",
-  number = 10)
+  number = 10,
+  summaryFunction = KPI)
 
 model4 <- train(
   song_popularity ~ .,
@@ -49,6 +67,11 @@ predictions = predict(model4, newdata = test.features)
 
 # RMSE
 sqrt(mean((test.target - predictions)^2))
+# R2
+cor(test.target, predictions) ^ 2
+# MAPE
+eps <- 1e-6 
+mean(abs((test.target - predictions) / (test.target + eps))) * 100
 
 ##Tunning the model (GridSearch for k)
 set.seed(1)
@@ -67,3 +90,11 @@ model5 <- train(
 )
 model5
 plot(model5)
+# RMSE
+sqrt(mean((test.target - predictions)^2))
+# R2
+cor(test.target, predictions) ^ 2
+# MAPE
+eps <- 1e-6 
+mean(abs((test.target - predictions) / (test.target + eps))) * 100
+
