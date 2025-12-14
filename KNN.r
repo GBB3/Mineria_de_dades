@@ -58,7 +58,7 @@ mape(test.target, predictions)
 ### Si agregamos cross-validation
 ctrl <- trainControl(
   method = "cv",
-  number = 10,
+  number = 5,
   summaryFunction = KPI)
 
 model4 <- train(
